@@ -1,0 +1,42 @@
+# JARVIS assistant dependencies
+# The OpenAI SDK is also compatible with other providers' OpenAI-style endpoints.
+openai>=1.30.0
+python-dotenv>=1.0.0
+
+# --- Optional: voice input (speech-to-text) ---
+# Needed only for `--voice`. Cross-platform, but PortAudio is required:
+#   macOS:          brew install portaudio
+#   Debian/Ubuntu:  sudo apt-get install portaudio19-dev
+#   Windows:        no separate step; the sounddevice wheel bundles PortAudio
+# Then uncomment the two lines below (or: pip install sounddevice numpy)
+# sounddevice>=0.4.6
+# numpy>=1.24
+#
+# Note: text-to-speech uses the OS built-in voice by default (no deps) —
+# macOS `say`, Windows System.Speech (PowerShell), or Linux spd-say/espeak —
+# or OpenAI TTS if you set JARVIS_TTS_BACKEND=openai (uses your API key).
+# On Windows, OpenAI-TTS playback of mp3 works best with ffmpeg's ffplay on PATH.
+
+# --- Optional: Spotify Web API (play any track by name) ---
+# Needed only if you want "play <song>" to search and play on your Spotify
+# device from any platform. Requires a Spotify developer app (client id/secret)
+# and a one-time browser login. Without it, Spotify falls back to local app
+# control. Uncomment to enable:
+# spotipy>=2.23.0
+
+# --- Optional: HUD dashboard (the "face") ---
+# Needed only for `python3 -m jarvis --dashboard`. psutil powers the live
+# CPU/memory vitals (without it the dashboard still runs, showing disk only).
+# fastapi>=0.110
+# uvicorn[standard]>=0.29
+# psutil>=5.9
+
+# --- Optional: background daemon global hotkey ---
+# Needed only for `python3 -m jarvis --daemon` to summon JARVIS with a global
+# hotkey from any app. Without it, the daemon falls back to Enter-to-trigger.
+# macOS also needs Accessibility permission granted to your terminal.
+# pynput>=1.7
+
+# --- Development / tests ---
+# Run the test suite with:  python3 -m pytest
+# pytest>=8.0

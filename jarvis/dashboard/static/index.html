@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<!-- Copyright (c) 2026 Tiago Pereira. All rights reserved. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>JARVIS</title>
+  <style>
+    :root {
+      --bg: #05090d;
+      --panel: rgba(10, 22, 30, 0.72);
+      --line: rgba(64, 208, 224, 0.28);
+      --teal: #46d6e4;
+      --teal-dim: #2a8b98;
+      --teal-faint: rgba(70, 214, 228, 0.5);
+      --text: #b8e8ef;
+      --muted: #4d7b84;
+      --warn: #e4a446;
+      --ok: #46e49a;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; height: 100%; background: var(--bg); color: var(--text);
+      font-family: "Consolas", "SF Mono", Menlo, monospace;
+      overflow: hidden; letter-spacing: 0.5px;
+    }
+    body {
+      background:
+        radial-gradient(ellipse at 50% 40%, rgba(20, 60, 74, 0.35), transparent 60%),
+        var(--bg);
+    }
+    .hud {
+      display: grid; height: 100vh;
+      grid-template-rows: 46px 1fr 74px;
+      grid-template-columns: 300px 1fr 300px;
+      grid-template-areas:
+        "header header header"
+        "left   center  right"
+        "footer footer footer";
+      gap: 12px; padding: 12px;
+    }
+    /* ---- header ---- */
+    header {
+      grid-area: header; display: flex; align-items: center; justify-content: space-between;
+      border: 1px solid var(--line); background: var(--panel);
+      padding: 0 16px; clip-path: polygon(0 0, 100% 0, 100% 70%, 98% 100%, 2% 100%, 0 70%);
+    }
+    .brand { display: flex; align-items: baseline; gap: 12px; }
+    .brand h1 { font-size: 18px; margin: 0; color: var(--teal); letter-spacing: 4px; }
+    .brand small { color: var(--muted); font-size: 10px; letter-spacing: 2px; }
+    .status-center { display: flex; align-items: center; gap: 20px; font-size: 11px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok);
+           box-shadow: 0 0 8px var(--ok); display: inline-block; margin-right: 6px; }
+    .dot.off { background: var(--warn); box-shadow: 0 0 8px var(--warn); }
+    .clock { color: var(--teal); font-size: 14px; }
+    .header-right { display: flex; align-items: center; gap: 14px; color: var(--muted); font-size: 11px; }
+    .voicebtn {
+      background: transparent; border: 1px solid var(--line); color: var(--teal);
+      font-family: inherit; font-size: 10px; letter-spacing: 1px; padding: 4px 8px;
+      cursor: pointer; border-radius: 2px; transition: all 0.2s;
+    }
+    .voicebtn:hover { border-color: var(--teal); box-shadow: 0 0 8px var(--teal-faint); }
+    .voicebtn.off { color: var(--muted); opacity: 0.6; }
+    /* ---- panels ---- */
+    .col { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+    .left { grid-area: left; } .right { grid-area: right; }
+    .panel {
+      border: 1px solid var(--line); background: var(--panel); padding: 10px 12px;
+      position: relative;
+    }
+    .panel::before {
+      content: ""; position: absolute; top: -1px; left: -1px; width: 10px; height: 10px;
+      border-top: 2px solid var(--teal); border-left: 2px solid var(--teal);
+    }
+    .panel h2 {
+      font-size: 10px; color: var(--teal-dim); margin: 0 0 8px; letter-spacing: 2px;
+      text-transform: uppercase; display: flex; justify-content: space-between;
+    }
+    .panel h2 .idx { color: var(--muted); }
+    .big { font-size: 34px; color: var(--teal); line-height: 1; }
+    .row { display: flex; justify-content: space-between; font-size: 12px; margin: 4px 0; }
+    .row .k { color: var(--muted); }
+    .bar { height: 6px; background: rgba(70,214,228,0.12); margin: 4px 0 10px; position: relative; }
+    .bar > i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--teal);
+               box-shadow: 0 0 8px var(--teal-faint); width: 0; transition: width 0.6s ease; }
+    .barlabel { display: flex; justify-content: space-between; font-size: 11px; }
+    /* ---- center ---- */
+    .center { grid-area: center; display: flex; flex-direction: column; align-items: center;
+              justify-content: center; position: relative; }
+    #core { max-width: 100%; max-height: 100%; }
+    .core-caption { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+                    text-align: center; pointer-events: none; }
+    .core-caption .lbl { font-size: 11px; color: var(--muted); letter-spacing: 3px; }
+    .core-caption .st { font-size: 15px; color: var(--teal); letter-spacing: 3px; }
+    /* ---- activity log ---- */
+    .tile { font-size: 11px; line-height: 1.5; color: var(--text); white-space: pre-line; }
+    .log { flex: 1; overflow-y: auto; font-size: 11px; line-height: 1.6; min-height: 0; }
+    .log .t { color: var(--muted); }
+    .log .u { color: var(--teal); }
+    .log .j { color: var(--text); }
+    .log::-webkit-scrollbar { width: 4px; }
+    .log::-webkit-scrollbar-thumb { background: var(--teal-dim); }
+    .chatpanel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+    /* ---- footer / command bar ---- */
+    footer { grid-area: footer; display: flex; flex-direction: column; align-items: center;
+             justify-content: center; gap: 8px; }
+    #wave { height: 22px; }
+    .cmd { width: min(560px, 80%); display: flex; align-items: center; gap: 10px;
+           border: 1px solid var(--line); background: var(--panel); padding: 8px 14px;
+           border-radius: 2px; }
+    .cmd input { flex: 1; background: transparent; border: none; outline: none;
+                 color: var(--teal); font-family: inherit; font-size: 13px; letter-spacing: 1px; }
+    .cmd input::placeholder { color: var(--muted); letter-spacing: 2px; }
+    .cmd .prompt { color: var(--teal-dim); font-size: 12px; }
+    .micbtn {
+      background: transparent; border: 1px solid var(--line); color: var(--teal);
+      cursor: pointer; border-radius: 2px; font-size: 13px; line-height: 1;
+      padding: 4px 8px; transition: all 0.2s;
+    }
+    .micbtn:hover { border-color: var(--teal); box-shadow: 0 0 8px var(--teal-faint); }
+    .micbtn.listening { color: var(--warn); border-color: var(--warn);
+      box-shadow: 0 0 10px rgba(228,164,70,0.6); animation: micpulse 1s infinite; }
+    .micbtn.hidden { display: none; }
+    @keyframes micpulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+    .flicker { animation: flick 3s infinite; }
+    @keyframes flick { 0%,97%,100% { opacity: 1; } 98% { opacity: 0.6; } }
+  </style>
+</head>
+<body>
+  <div class="hud">
+    <header>
+      <div class="brand">
+        <h1 class="flicker">JARVIS</h1>
+        <small>JUST A RATHER VERY INTELLIGENT SYSTEM</small>
+      </div>
+      <div class="status-center">
+        <span><span class="dot" id="statusdot"></span><span id="statustext">CONNECTING</span></span>
+        <span id="modeltext" style="color:var(--muted)"></span>
+      </div>
+      <div class="header-right">
+        <button id="voicebtn" class="voicebtn" title="Toggle JARVIS voice">
+          <span id="voiceicon">&#128266;</span> VOICE
+        </button>
+        <span>LOCAL TIME</span>
+        <span class="clock" id="clock">--:--:--</span>
+      </div>
+    </header>
+
+    <!-- LEFT COLUMN -->
+    <div class="col left">
+      <div class="panel">
+        <h2><span>SYSTEM // VITALS</span><span class="idx">01</span></h2>
+        <div class="big"><span id="cpuBig">--</span><span style="font-size:14px"> %</span></div>
+        <div class="row"><span class="k">CPU LOAD</span><span id="cpuTxt">--</span></div>
+        <div class="row"><span class="k">UPTIME</span><span id="uptime">--</span></div>
+        <div class="row"><span class="k">STATUS</span><span id="vitStatus" style="color:var(--ok)">ACTIVE</span></div>
+      </div>
+      <div class="panel">
+        <h2><span>SYSTEM // RESOURCES</span><span class="idx">02</span></h2>
+        <div class="barlabel"><span>CPU</span><span id="cpuPct">--%</span></div>
+        <div class="bar"><i id="cpuBar"></i></div>
+        <div class="barlabel"><span>MEMORY</span><span id="memPct">--%</span></div>
+        <div class="bar"><i id="memBar"></i></div>
+        <div class="barlabel"><span>STORAGE</span><span id="diskPct">--%</span></div>
+        <div class="bar"><i id="diskBar"></i></div>
+      </div>
+      <div class="panel" style="flex:1">
+        <h2><span>SYSTEM // OS</span><span class="idx">03</span></h2>
+        <div class="row"><span class="k">PLATFORM</span><span id="osName">--</span></div>
+        <div class="row"><span class="k">SENSORS</span><span id="sensors" style="color:var(--muted)">--</span></div>
+      </div>
+    </div>
+
+    <!-- CENTER -->
+    <div class="center">
+      <canvas id="core" width="440" height="440"></canvas>
+      <div class="core-caption">
+        <div class="lbl">CORE</div>
+        <div class="st" id="coreState">ACTIVE</div>
+      </div>
+    </div>
+
+    <!-- RIGHT COLUMN -->
+    <div class="col right">
+      <div class="panel">
+        <h2><span>SYSTEM // MODULES</span><span class="idx">04</span></h2>
+        <div class="row"><span class="k">SKILLS ONLINE</span><span id="skillCount" style="color:var(--teal)">--</span></div>
+        <div class="row"><span class="k">BRAIN</span><span id="brainState" style="color:var(--ok)">--</span></div>
+      </div>
+      <div class="panel">
+        <h2><span>SYSTEM // WEATHER</span><span class="idx">W</span></h2>
+        <div id="weatherTile" class="tile">—</div>
+      </div>
+      <div class="panel">
+        <h2><span>SYSTEM // NEWS</span><span class="idx">N</span></h2>
+        <div id="newsTile" class="tile">—</div>
+      </div>
+      <div class="panel chatpanel">
+        <h2><span>SYSTEM // ACTIVITY LOG</span><span class="idx">05</span></h2>
+        <div class="log" id="log"></div>
+      </div>
+    </div>
+
+    <!-- FOOTER -->
+    <footer>
+      <canvas id="wave" width="240" height="22"></canvas>
+      <form class="cmd" id="cmdform" autocomplete="off">
+        <span class="prompt">&gt;</span>
+        <input id="cmd" placeholder="AWAITING COMMAND..." />
+        <button type="button" id="micbtn" class="micbtn" title="Click to talk">&#127908;</button>
+      </form>
+    </footer>
+  </div>
+
+  <script src="/static/hud.js"></script>
+</body>
+</html>
