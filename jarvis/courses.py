@@ -320,3 +320,28 @@ class Courses:
                                 "date": t["deadline"], "title": t["title"]})
         out.sort(key=lambda x: x["date"])
         return out
+
+    def on_date(self, date: str) -> list[dict[str, Any]]:
+        """Tudo agendado numa data exata (AAAA-MM-DD): testes, trabalhos e
+        faltas, em todas as disciplinas. Lista vazia se a data for inválida."""
+        iso = _valid_date(date)
+        if iso is None:
+            return []
+        out: list[dict[str, Any]] = []
+        for d in self._data["disciplines"].values():
+            for t in d["tests"]:
+                if _valid_date(t["date"]) == iso:
+                    out.append({"kind": "teste", "discipline": d["name"],
+                                "date": iso, "title": t.get("title", ""),
+                                "done": t.get("done", False)})
+            for t in d["tasks"]:
+                if _valid_date(t["deadline"]) == iso:
+                    out.append({"kind": "trabalho", "discipline": d["name"],
+                                "date": iso, "title": t.get("title", ""),
+                                "done": t.get("done", False)})
+            for a in d["absences"]:
+                if _valid_date(a["date"]) == iso:
+                    out.append({"kind": "falta", "discipline": d["name"],
+                                "date": iso, "title": a.get("reason", ""),
+                                "done": False})
+        return out

@@ -164,6 +164,34 @@ class AddCourseNoteSkill(Skill):
         return f"Apontamento guardado em {disc['name']}."
 
 
+class CourseOnDateSkill(Skill):
+    name = "course_on_date"
+    description = (
+        "O que está agendado no curso numa data específica: testes, trabalhos "
+        "e faltas. Dá 'date' em AAAA-MM-DD (resolve datas relativas primeiro)."
+    )
+    parameters: dict[str, Any] = {
+        "date": {"type": "string", "description": "Data a consultar (AAAA-MM-DD)."}
+    }
+    required = ["date"]
+
+    def run(self, date: str = "", **kwargs: Any) -> str:
+        from ..courses import _valid_date
+
+        iso = _valid_date(date)
+        if iso is None:
+            return f"[error] Data inválida '{date}'. Usa o formato AAAA-MM-DD."
+        itens = _courses(self.registry).on_date(iso)
+        if not itens:
+            return f"Não há nada agendado no curso para {iso}."
+        linhas = []
+        for it in itens:
+            desc = f" — {it['title']}" if it["title"] else ""
+            feito = " (concluído)" if it.get("done") else ""
+            linhas.append(f"• {it['kind']} de {it['discipline']}{desc}{feito}")
+        return f"No dia {iso}:\n" + "\n".join(linhas)
+
+
 class CourseSummarySkill(Skill):
     name = "course_summary"
     description = (

@@ -34,7 +34,19 @@ class Brain:
 
         memory = getattr(registry, "memory", None) or Memory()
         registry.memory = memory
-        system_prompt = SYSTEM_PROMPT + memory.as_prompt_block()
+
+        # Give the model today's real date so it resolves relative dates
+        # ("amanhã", "dia 18 de dezembro", "próxima sexta") with the correct
+        # year instead of guessing. Recomputed each time a Brain is built.
+        import datetime as _dt
+
+        _today = _dt.date.today()
+        date_block = (
+            f"\nToday's date is {_today.isoformat()} "
+            f"({_today.strftime('%A, %d %B %Y')}). Use it to resolve any "
+            "relative or partial dates the user gives, keeping the correct year.\n"
+        )
+        system_prompt = SYSTEM_PROMPT + date_block + memory.as_prompt_block()
 
         # Share the course/study store on the registry too, so the course
         # skills and the /cursos web page operate on the same data.
