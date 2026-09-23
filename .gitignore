@@ -1,15 +1,6 @@
-# Environment / secrets — never commit these
+# Environment / secrets
 .env
 *.env
-!.env.example
-*token*.json
-spotify_token.json
-
-# JARVIS runtime data (lives in ~/.jarvis by default; ignore if kept locally)
-.jarvis/
-reminders.json
-memory.json
-history.jsonl
 
 # Python
 __pycache__/
@@ -18,9 +9,6 @@ __pycache__/
 .venv/
 venv/
 env/
-.pytest_cache/
 
-# OS / editor
+# OS
 .DS_Store
-.idea/
-.vscode/

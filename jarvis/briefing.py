@@ -66,6 +66,23 @@ def compose_briefing(registry: Any, *, salutation: str = "sir") -> str:
         else:
             parts.append(cal)
 
+    # Upcoming course tests / group tasks (next 7 days). Spoken in Portuguese,
+    # since the course manager is Portuguese. Pulled straight from the shared
+    # course store on the registry.
+    courses = getattr(registry, "courses", None)
+    if courses is not None:
+        try:
+            itens = courses.upcoming(7)
+        except Exception:  # noqa: BLE001
+            itens = []
+        if itens:
+            linhas = [
+                f"{it['kind']} de {it['discipline']} a {it['date']}"
+                + (f" ({it['title']})" if it.get("title") else "")
+                for it in itens
+            ]
+            parts.append("Para esta semana: " + "; ".join(linhas) + ".")
+
     # Top news headlines (keep it short for speech).
     news = _clean(registry.dispatch("get_news", {"count": 3}))
     if news:

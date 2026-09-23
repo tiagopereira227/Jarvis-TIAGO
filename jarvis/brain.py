@@ -36,6 +36,12 @@ class Brain:
         registry.memory = memory
         system_prompt = SYSTEM_PROMPT + memory.as_prompt_block()
 
+        # Share the course/study store on the registry too, so the course
+        # skills and the /cursos web page operate on the same data.
+        from .courses import Courses
+
+        registry.courses = getattr(registry, "courses", None) or Courses()
+
         self._history: list[dict[str, Any]] = [
             {"role": "system", "content": system_prompt}
         ]

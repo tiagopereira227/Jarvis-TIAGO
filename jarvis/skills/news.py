@@ -21,11 +21,14 @@ from xml.etree import ElementTree as ET
 from .base import Skill
 
 _HTTP_TIMEOUT = 10
-# A couple of sensible, key-free defaults. Users can pass any feed URL.
+# Portuguese news feeds by default (key-free public RSS from RTP, the national
+# broadcaster — verified working). Users can pass any feed URL as the source.
 _DEFAULT_FEEDS = {
-    "world": "https://feeds.bbci.co.uk/news/world/rss.xml",
-    "tech": "https://feeds.arstechnica.com/arstechnica/index",
-    "top": "https://feeds.bbci.co.uk/news/rss.xml",
+    "top": "https://www.rtp.pt/noticias/rss",
+    "world": "https://www.rtp.pt/noticias/rss/mundo",
+    "country": "https://www.rtp.pt/noticias/rss/pais",
+    "economy": "https://www.rtp.pt/noticias/rss/economia",
+    "sport": "https://www.record.pt/rss",
 }
 # Detect a DOCTYPE anywhere in the prolog. If present, we refuse to parse.
 _DOCTYPE_RE = re.compile(rb"<!DOCTYPE", re.IGNORECASE)
@@ -42,6 +45,24 @@ def _strip_ns(tag: str) -> str:
     return tag.rsplit("}", 1)[-1].lower()
 
 
+def _clean_title(text: str) -> str:
+    """Tidy a raw feed title: drop CDATA wrappers and stray HTML tags/entities.
+
+    Some feeds (e.g. Record) wrap titles in <![CDATA[...]]>, and a few embed
+    HTML. ElementTree already unwraps CDATA into .text, but we defensively strip
+    any leftover markers and tags so headlines read as clean plain text.
+    """
+    import html as _html
+
+    t = text.strip()
+    # Remove leftover CDATA markers if a feed double-wrapped them.
+    t = t.replace("<![CDATA[", "").replace("]]>", "")
+    # Strip any HTML tags, then unescape entities (&amp; -> &).
+    t = re.sub(r"<[^>]+>", "", t)
+    t = _html.unescape(t)
+    return t.strip()
+
+
 def _extract_titles(raw: bytes, limit: int) -> list[str]:
     """Parse RSS (<item><title>) or Atom (<entry><title>) titles."""
     if _DOCTYPE_RE.search(raw):
@@ -52,7 +73,9 @@ def _extract_titles(raw: bytes, limit: int) -> list[str]:
         if _strip_ns(elem.tag) in ("item", "entry"):
             for child in elem:
                 if _strip_ns(child.tag) == "title" and child.text:
-                    titles.append(child.text.strip())
+                    cleaned = _clean_title(child.text)
+                    if cleaned:
+                        titles.append(cleaned)
                     break
         if len(titles) >= limit:
             break

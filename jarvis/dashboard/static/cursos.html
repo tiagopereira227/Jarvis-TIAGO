@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<!-- Copyright (c) 2026 Tiago Pereira. All rights reserved. -->
+<html lang="pt">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>JARVIS · Cursos</title>
+  <style>
+    :root {
+      --bg: #05090d; --panel: rgba(10, 22, 30, 0.72); --line: rgba(64,208,224,0.28);
+      --teal: #46d6e4; --teal-dim: #2a8b98; --teal-faint: rgba(70,214,228,0.5);
+      --text: #b8e8ef; --muted: #4d7b84; --warn: #e4a446; --ok: #46e49a; --bad: #e4586a;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text);
+      font-family: "Consolas","SF Mono",Menlo,monospace; letter-spacing: .3px; }
+    body { background: radial-gradient(ellipse at 50% 0%, rgba(20,60,74,.35), transparent 60%), var(--bg); }
+    a { color: var(--teal); text-decoration: none; }
+    header { display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 20px; border-bottom: 1px solid var(--line); }
+    header h1 { font-size: 18px; letter-spacing: 4px; color: var(--teal); margin: 0; }
+    header .sub { color: var(--muted); font-size: 11px; letter-spacing: 2px; }
+    .wrap { max-width: 1000px; margin: 0 auto; padding: 18px 20px 60px; }
+    .tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+    .tab { border: 1px solid var(--line); background: var(--panel); color: var(--text);
+      padding: 8px 14px; cursor: pointer; font-family: inherit; font-size: 12px;
+      letter-spacing: 1px; border-radius: 2px 2px 0 0; }
+    .tab:hover { border-color: var(--teal); }
+    .tab.active { color: var(--teal); border-color: var(--teal); box-shadow: 0 0 8px var(--teal-faint); }
+    .tab.add { color: var(--ok); border-style: dashed; }
+    .panel { border: 1px solid var(--line); background: var(--panel); padding: 16px; margin-bottom: 16px; }
+    .panel h2 { font-size: 11px; color: var(--teal-dim); letter-spacing: 2px; text-transform: uppercase;
+      margin: 0 0 10px; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+    .disc-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px; }
+    .disc-head .name { font-size: 22px; color: var(--teal); letter-spacing: 1px; }
+    .meta { color: var(--muted); font-size: 12px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } }
+    ul { list-style: none; margin: 0 0 10px; padding: 0; }
+    li { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 4px 0;
+      border-bottom: 1px solid rgba(70,214,228,.08); }
+    li .when { color: var(--teal); min-width: 92px; }
+    li .txt { flex: 1; }
+    li.done .txt { text-decoration: line-through; color: var(--muted); }
+    .btn { background: transparent; border: 1px solid var(--line); color: var(--text);
+      font-family: inherit; font-size: 11px; padding: 2px 7px; cursor: pointer; border-radius: 2px; }
+    .btn:hover { border-color: var(--teal); color: var(--teal); }
+    .btn.del:hover { border-color: var(--bad); color: var(--bad); }
+    form.add-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+    input, textarea { background: #0a161e; border: 1px solid var(--line); color: var(--text);
+      font-family: inherit; font-size: 12px; padding: 6px 8px; border-radius: 2px; }
+    input[type=date] { color-scheme: dark; }
+    input.grow { flex: 1; min-width: 120px; }
+    .empty { color: var(--muted); font-size: 12px; font-style: italic; }
+    .grade { color: var(--warn); border: 1px solid var(--line); border-radius: 2px;
+      padding: 1px 7px; font-size: 12px; cursor: pointer; min-width: 24px; text-align: center; }
+    .grade:hover { border-color: var(--warn); box-shadow: 0 0 6px rgba(228,164,70,.5); }
+    .grade-static { color: var(--warn); font-size: 13px; min-width: 40px; text-align: right; }
+    .addform input { margin-right: 6px; }
+    .count { color: var(--warn); }
+    .toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+      background: var(--panel); border: 1px solid var(--line); color: var(--teal);
+      padding: 8px 16px; font-size: 12px; border-radius: 2px; opacity: 0; transition: opacity .3s; }
+    .toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>JARVIS · CURSOS</h1>
+      <div class="sub">GESTOR DE DISCIPLINAS</div>
+    </div>
+    <div><a href="/">← Voltar ao HUD</a></div>
+  </header>
+
+  <div class="wrap">
+    <div class="tabs" id="tabs"></div>
+    <div id="content"></div>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <script src="/static/cursos.js"></script>
+</body>
+</html>

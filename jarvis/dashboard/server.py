@@ -38,8 +38,8 @@ _TILE_TICK = 600.0
 def create_app() -> Any:
     """Build the FastAPI app. Imports FastAPI lazily with a helpful error."""
     try:
-        from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-        from fastapi.responses import HTMLResponse
+        from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+        from fastapi.responses import HTMLResponse, JSONResponse
         from fastapi.staticfiles import StaticFiles
     except ImportError as exc:  # pragma: no cover - exercised only without deps
         raise SystemExit(
@@ -67,10 +67,118 @@ def create_app() -> Any:
     app.state.history = history
 
     index_html = (_STATIC / "index.html").read_text(encoding="utf-8")
+    cursos_html = (_STATIC / "cursos.html").read_text(encoding="utf-8")
 
     @app.get("/", response_class=HTMLResponse)
     async def index() -> str:
         return index_html
+
+    # -- Gestor de disciplinas (/cursos) -----------------------------------
+
+    courses = registry.courses  # shared store (set up by Brain)
+
+    @app.get("/cursos", response_class=HTMLResponse)
+    async def cursos_page() -> str:
+        return cursos_html
+
+    @app.get("/api/cursos")
+    async def api_list() -> Any:
+        # Full state: every discipline with its notes/tests/tasks/absences, so
+        # the page can render one tab per discipline.
+        return JSONResponse({"disciplines": courses.list_disciplines()})
+
+    @app.post("/api/cursos")
+    async def api_add_discipline(req: Request) -> Any:
+        body = await req.json()
+        disc = courses.add_discipline(
+            body.get("name", ""), body.get("teacher", ""), body.get("email", "")
+        )
+        if disc is None:
+            return JSONResponse(
+                {"error": "Nome vazio ou disciplina já existente."}, status_code=400
+            )
+        return JSONResponse(disc)
+
+    @app.post("/api/cursos/{disc_id}/update")
+    async def api_update(disc_id: str, req: Request) -> Any:
+        body = await req.json()
+        ok = courses.update_discipline(
+            disc_id, teacher=body.get("teacher"), email=body.get("email")
+        )
+        return JSONResponse({"ok": ok}, status_code=200 if ok else 404)
+
+    @app.post("/api/cursos/{disc_id}/delete")
+    async def api_delete_discipline(disc_id: str) -> Any:
+        ok = courses.remove_discipline(disc_id)
+        return JSONResponse({"ok": ok}, status_code=200 if ok else 404)
+
+    # Rotas específicas (horário / classificações) — antes da rota genérica
+    # {kind}, senão "schedule"/"grades" seriam apanhados por api_add_entry.
+    @app.post("/api/cursos/{disc_id}/schedule")
+    async def api_add_class(disc_id: str, req: Request) -> Any:
+        body = await req.json()
+        aula = courses.add_class(
+            disc_id,
+            body.get("weekday", ""),
+            body.get("start", ""),
+            body.get("end", ""),
+            body.get("room", ""),
+        )
+        if aula is None:
+            return JSONResponse(
+                {"error": "Disciplina não encontrada ou dia em falta."}, status_code=400
+            )
+        return JSONResponse(aula)
+
+    @app.post("/api/cursos/{disc_id}/grades")
+    async def api_add_grade(disc_id: str, req: Request) -> Any:
+        body = await req.json()
+        g = courses.add_grade(disc_id, body.get("label", ""), body.get("value", ""))
+        if g is None:
+            return JSONResponse(
+                {"error": "Disciplina não encontrada, ou falta o nome/valor."},
+                status_code=400,
+            )
+        return JSONResponse(g)
+
+    @app.post("/api/cursos/{disc_id}/{kind}/{entry_id}/grade")
+    async def api_set_grade(disc_id: str, kind: str, entry_id: str, req: Request) -> Any:
+        body = await req.json()
+        ok = courses.set_grade(disc_id, kind, entry_id, body.get("grade", ""))
+        return JSONResponse({"ok": ok}, status_code=200 if ok else 404)
+
+    @app.post("/api/cursos/{disc_id}/{kind}")
+    async def api_add_entry(disc_id: str, kind: str, req: Request) -> Any:
+        # 'delete'/'update' are handled by their own routes above; guard anyway.
+        if kind not in ("notes", "tests", "tasks", "absences"):
+            return JSONResponse({"error": "tipo inválido"}, status_code=400)
+        body = await req.json()
+        if kind == "notes":
+            entry = courses.add_note(disc_id, body.get("text", ""))
+        elif kind == "tests":
+            entry = courses.add_test(disc_id, body.get("date", ""), body.get("title", ""))
+        elif kind == "tasks":
+            entry = courses.add_task(disc_id, body.get("deadline", ""), body.get("title", ""))
+        elif kind == "absences":
+            entry = courses.add_absence(disc_id, body.get("date", ""), body.get("reason", ""))
+        else:
+            return JSONResponse({"error": "tipo inválido"}, status_code=400)
+        if entry is None:
+            return JSONResponse(
+                {"error": "Disciplina não encontrada ou dados inválidos (data AAAA-MM-DD)."},
+                status_code=400,
+            )
+        return JSONResponse(entry)
+
+    @app.post("/api/cursos/{disc_id}/{kind}/{entry_id}/toggle")
+    async def api_toggle(disc_id: str, kind: str, entry_id: str) -> Any:
+        ok = courses.toggle_done(disc_id, kind, entry_id)
+        return JSONResponse({"ok": ok}, status_code=200 if ok else 404)
+
+    @app.post("/api/cursos/{disc_id}/{kind}/{entry_id}/delete")
+    async def api_delete_entry(disc_id: str, kind: str, entry_id: str) -> Any:
+        ok = courses.remove_entry(disc_id, kind, entry_id)
+        return JSONResponse({"ok": ok}, status_code=200 if ok else 404)
 
     if _STATIC.exists():
         app.mount("/static", StaticFiles(directory=str(_STATIC)), name="static")

@@ -10,11 +10,27 @@ from __future__ import annotations
 import datetime as dt
 
 from jarvis.skills.reminders_app import _parse_due
+from jarvis.skills.notes_app import _to_html
 
 
 def test_new_skills_registered(registry):
-    for name in ("read_mail", "send_mail", "send_message", "create_reminder"):
+    for name in ("read_mail", "send_mail", "send_message", "create_reminder",
+                 "notes_app"):
         assert registry.has(name), name
+
+
+def test_notes_app_validates(registry):
+    # Bad action and missing title return errors, never raise.
+    assert registry.dispatch("notes_app", {"action": "nope", "title": "x"}).startswith("[error]")
+    assert registry.dispatch("notes_app", {"action": "create", "title": ""}).startswith("[error]")
+
+
+def test_notes_html_escaping_prevents_injection():
+    # HTML-special chars are escaped; newlines become <br>. No raw tags survive.
+    out = _to_html('a & b < c > d\nnext "line"')
+    assert "&amp;" in out and "&lt;" in out and "&gt;" in out
+    assert "<br>" in out
+    assert "<c" not in out  # the literal "< c" must not become a tag
 
 
 def test_send_mail_validates_address(registry):
