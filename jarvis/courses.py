@@ -77,7 +77,8 @@ class Courses:
         # Migração leve: garante que disciplinas antigas têm os campos novos,
         # para a página e as skills nunca rebentarem por uma chave em falta.
         for d in data["disciplines"].values():
-            for key in ("notes", "tests", "tasks", "absences", "schedule", "grades"):
+            for key in ("notes", "tests", "tasks", "absences", "schedule",
+                        "grades", "materials"):
                 d.setdefault(key, [])
         return data
 
@@ -93,10 +94,30 @@ class Courses:
 
     # -- disciplinas --------------------------------------------------------
 
+    @staticmethod
+    def _norm_name(name: str) -> str:
+        """Normaliza um nome para comparação: sem acentos, minúsculas, sem
+        pontuação nem espaços a mais. Assim 'Matemática', 'Matematica' e
+        'MATEMÁTICA' resolvem para a MESMA disciplina (evita duplicados)."""
+        import re
+        import unicodedata
+
+        s = (name or "").strip().lower()
+        # Remove acentos (á->a, ç->c, ã->a, ...).
+        s = "".join(
+            ch for ch in unicodedata.normalize("NFKD", s)
+            if not unicodedata.combining(ch)
+        )
+        # Colapsa tudo o que não é letra/número num único espaço.
+        s = re.sub(r"[^a-z0-9]+", " ", s).strip()
+        return s
+
     def _find_by_name(self, name: str) -> dict[str, Any] | None:
-        name = (name or "").strip().lower()
+        target = self._norm_name(name)
+        if not target:
+            return None
         for d in self._data["disciplines"].values():
-            if d["name"].strip().lower() == name:
+            if self._norm_name(d["name"]) == target:
                 return d
         return None
 
@@ -135,6 +156,7 @@ class Courses:
             "absences": [],
             "schedule": [],  # aulas: {id, weekday, start, end, room}
             "grades": [],  # classificações avulsas: {id, label, value}
+            "materials": [],  # aulas/PPT: {id, title, date, text, summary}
         }
         self._data["disciplines"][disc["id"]] = disc
         self._save()
@@ -226,7 +248,8 @@ class Courses:
     def remove_entry(self, disc_id: str, kind: str, entry_id: str) -> bool:
         """Remove uma entrada. kind: notes|tests|tasks|absences|schedule|grades."""
         d = self.get_discipline(disc_id)
-        valid = ("notes", "tests", "tasks", "absences", "schedule", "grades")
+        valid = ("notes", "tests", "tasks", "absences", "schedule", "grades",
+                 "materials")
         if d is None or kind not in valid:
             return False
         before = len(d[kind])
@@ -265,6 +288,77 @@ class Courses:
         )
         self._save()
         return aula
+
+    _WEEKDAY_ORDER = {
+        "segunda": 0, "terça": 1, "terca": 1, "quarta": 2, "quinta": 3,
+        "sexta": 4, "sábado": 5, "sabado": 5, "domingo": 6,
+    }
+
+    def all_classes(self) -> list[dict[str, Any]]:
+        """Todas as aulas de todas as disciplinas, para a grelha semanal.
+
+        Cada item traz o nome e id da disciplina, ordenado por dia e hora.
+        """
+        out: list[dict[str, Any]] = []
+        for d in self._data["disciplines"].values():
+            for a in d.get("schedule", []):
+                out.append({
+                    "discipline": d["name"],
+                    "discipline_id": d["id"],
+                    "weekday": a.get("weekday", ""),
+                    "start": a.get("start", ""),
+                    "end": a.get("end", ""),
+                    "room": a.get("room", ""),
+                })
+        out.sort(key=lambda a: (
+            self._WEEKDAY_ORDER.get(a["weekday"].strip().lower(), 9),
+            a.get("start", ""),
+        ))
+        return out
+
+    # -- materiais / aulas (PPT/PDF) ---------------------------------------
+
+    def add_material(
+        self, disc_id: str, title: str, text: str, summary: str = ""
+    ) -> dict[str, Any] | None:
+        """Guarda um material de aula (texto extraído de PPT/PDF) na disciplina."""
+        d = self.get_discipline(disc_id)
+        text = (text or "").strip()
+        if d is None or not text:
+            return None
+        mat = {
+            "id": _new_id(),
+            "title": (title or "").strip() or "Aula",
+            "date": _dt.date.today().isoformat(),
+            "text": text,
+            "summary": (summary or "").strip(),
+        }
+        d["materials"].append(mat)
+        self._save()
+        return mat
+
+    def get_material(self, disc_id: str, mat_id: str) -> dict[str, Any] | None:
+        d = self.get_discipline(disc_id)
+        if d is None:
+            return None
+        for m in d.get("materials", []):
+            if m["id"] == mat_id:
+                return m
+        return None
+
+    def latest_material(self, disc_id: str) -> dict[str, Any] | None:
+        d = self.get_discipline(disc_id)
+        if d is None or not d.get("materials"):
+            return None
+        return d["materials"][-1]
+
+    def set_material_summary(self, disc_id: str, mat_id: str, summary: str) -> bool:
+        m = self.get_material(disc_id, mat_id)
+        if m is None:
+            return False
+        m["summary"] = (summary or "").strip()
+        self._save()
+        return True
 
     # -- classificações -----------------------------------------------------
 

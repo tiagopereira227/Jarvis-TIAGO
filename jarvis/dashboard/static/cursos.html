@@ -56,6 +56,30 @@
       padding: 1px 7px; font-size: 12px; cursor: pointer; min-width: 24px; text-align: center; }
     .grade:hover { border-color: var(--warn); box-shadow: 0 0 6px rgba(228,164,70,.5); }
     .grade-static { color: var(--warn); font-size: 13px; min-width: 40px; text-align: right; }
+    .hgrid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
+    @media (max-width: 820px) { .hgrid { grid-template-columns: repeat(3, 1fr); } }
+    @media (max-width: 520px) { .hgrid { grid-template-columns: 1fr 1fr; } }
+    .hday { display: flex; flex-direction: column; }
+    .hday-title { text-align: center; color: var(--bg); background: var(--teal);
+      font-size: 11px; letter-spacing: 2px; text-transform: uppercase;
+      font-weight: bold; padding: 6px 0; border-radius: 4px 4px 0 0; }
+    .hday-body { border: 1px solid var(--line); border-top: none;
+      border-radius: 0 0 4px 4px; padding: 8px; min-height: 90px;
+      display: flex; flex-direction: column; gap: 8px; flex: 1;
+      background: rgba(70,214,228,0.03); }
+    .haula { border-left: 3px solid var(--teal); background: rgba(70,214,228,0.10);
+      border-radius: 3px; padding: 6px 8px; }
+    .haula .when { color: var(--teal); font-size: 11px; font-weight: bold; display: block; }
+    .haula .name { color: var(--text); font-size: 12px; display: block; margin-top: 2px; }
+    .haula .room { color: var(--muted); font-size: 10px; }
+    .hday-empty { color: var(--muted); font-size: 11px; text-align: center;
+      opacity: 0.4; margin: auto 0; }
+    .proprow input { font-size: 12px; }
+    .matrow { align-items: flex-start; }
+    .matsummary { display: none; white-space: pre-wrap; font-size: 12px;
+      color: var(--text); margin-top: 6px; padding: 8px; border-left: 2px solid var(--teal);
+      background: rgba(70,214,228,0.06); border-radius: 3px; line-height: 1.45; }
+    .matsummary.open { display: block; }
     .addform input { margin-right: 6px; }
     .count { color: var(--warn); }
     .toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);

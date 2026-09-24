@@ -40,3 +40,15 @@ python-dotenv>=1.0.0
 # --- Development / tests ---
 # Run the test suite with:  python3 -m pytest
 # pytest>=8.0
+
+# --- Optional: reading PDF attachments ---
+# Needed only to read text from PDF files (attachments / read_file). Images and
+# text files work without it. Without pypdf, PDFs return a helpful message.
+# python-multipart is needed by the dashboard's file-upload endpoint.
+# pypdf>=4.0
+# python-multipart>=0.0.9
+
+# --- Optional: reading PowerPoint (.pptx) lesson materials ---
+# Needed only to extract text from .pptx files (course materials / summaries).
+# Without it, .pptx uploads return a helpful message; PDFs still work via pypdf.
+# python-pptx>=0.6.23

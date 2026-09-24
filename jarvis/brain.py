@@ -86,6 +86,160 @@ class Brain:
         """
         return self._client
 
+    def summarize_text(self, text: str, title: str = "") -> str:
+        """Resume um texto (material de aula) em português. Precisa do modelo."""
+        text = (text or "").strip()
+        if not text:
+            return "[error] Não há texto para resumir."
+        if self._client is None:
+            return "[error] Resumir precisa do cérebro online (define JARVIS_API_KEY)."
+        cabec = f"da aula '{title}'" if title else "deste material"
+        instru = (
+            f"Faz um resumo claro e organizado {cabec}, em português de Portugal "
+            "(pt-PT). Usa tópicos/bullets para as ideias principais e destaca os "
+            "conceitos-chave e termos importantes, mantendo os termos técnicos tal "
+            "como aparecem no material (não traduzas nem inventes). "
+            "IMPORTANTE: se houver matemática (equações, fórmulas, símbolos como "
+            "Σ, √, ≤, ≥, ±, letras gregas, expoentes, frações), PRESERVA-as no "
+            "resumo, escritas de forma legível e fiel ao original — nunca as "
+            "omitas nem as simplifiques ao ponto de perderem o significado. "
+            "Explica brevemente o que cada fórmula representa. Sê conciso mas "
+            "completo, e não acrescentes conteúdo que não esteja no material."
+        )
+        try:
+            resp = self._client.chat.completions.create(
+                model=self.config.model,
+                messages=[{"role": "user", "content": instru + "\n\n--- Conteúdo ---\n" + text}],
+            )
+            return (resp.choices[0].message.content or "").strip() or (
+                "Não consegui gerar um resumo."
+            )
+        except Exception as exc:  # noqa: BLE001
+            return f"[error] O modelo não conseguiu resumir: {exc}"
+
+    def extract_schedule(self, extracted: dict[str, Any]) -> dict[str, Any]:
+        """Lê um horário (imagem ou texto/PDF) e devolve aulas estruturadas.
+
+        Devolve {"classes": [{"discipline","weekday","start","end","room"}, ...]}
+        ou {"error": "..."}. Não grava nada — é só a proposta para o utilizador
+        confirmar. Precisa do modelo online.
+        """
+        import json as _json
+
+        if extracted.get("kind") == "error":
+            return {"error": extracted.get("error", "anexo inválido")}
+        if self._client is None:
+            return {"error": "Ler o horário precisa do cérebro online (define JARVIS_API_KEY)."}
+
+        instru = (
+            "És um extrator de horários escolares. A partir do horário fornecido, "
+            "devolve APENAS JSON válido, sem texto à volta, no formato: "
+            '{"classes":[{"discipline":"<nome da disciplina>","weekday":"<dia da '
+            'semana em português: Segunda/Terça/Quarta/Quinta/Sexta/Sábado>",'
+            '"start":"HH:MM","end":"HH:MM","room":"<sala ou vazio>"}]}. '
+            "Usa horas em formato 24h. Se não houver sala, deixa vazio. Não "
+            "inventes aulas que não estão no horário."
+        )
+        try:
+            if extracted["kind"] == "image":
+                messages = [{
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": instru},
+                        {"type": "image_url",
+                         "image_url": {"url": extracted["data_uri"]}},
+                    ],
+                }]
+            else:  # texto/PDF
+                messages = [{
+                    "role": "user",
+                    "content": instru + "\n\n--- Horário ---\n" + extracted["text"],
+                }]
+            resp = self._client.chat.completions.create(
+                model=self.config.model,
+                messages=messages,
+                response_format={"type": "json_object"},
+            )
+            raw = resp.choices[0].message.content or "{}"
+            data = _json.loads(raw)
+        except Exception as exc:  # noqa: BLE001
+            return {"error": f"Não consegui interpretar o horário: {exc}"}
+
+        classes = data.get("classes")
+        if not isinstance(classes, list) or not classes:
+            return {"error": "Não encontrei aulas no horário."}
+        # Normaliza/valida cada aula, descartando o que vier claramente errado.
+        clean: list[dict[str, Any]] = []
+        for c in classes:
+            if not isinstance(c, dict):
+                continue
+            disc = str(c.get("discipline", "")).strip()
+            wd = str(c.get("weekday", "")).strip()
+            if not disc or not wd:
+                continue
+            clean.append({
+                "discipline": disc,
+                "weekday": wd,
+                "start": str(c.get("start", "")).strip(),
+                "end": str(c.get("end", "")).strip(),
+                "room": str(c.get("room", "")).strip(),
+            })
+        if not clean:
+            return {"error": "Não consegui extrair aulas válidas do horário."}
+        return {"classes": clean}
+
+    def respond_to_attachment(self, extracted: dict[str, Any], prompt: str = "") -> str:
+        """Responde sobre um anexo já extraído (ver attachments.extract_*).
+
+        - kind 'image' -> envia a imagem ao modelo de visão;
+        - kind 'text'  -> mete o texto extraído no pedido;
+        - kind 'error' -> devolve o erro tal como está.
+        Precisa do modelo online; offline explica que não é possível.
+        """
+        if extracted.get("kind") == "error":
+            return f"[error] {extracted.get('error', 'anexo inválido')}"
+        if self._client is None:
+            return (
+                "[error] Ler anexos precisa do cérebro online (modelo). "
+                "Define JARVIS_API_KEY para ativar."
+            )
+
+        name = extracted.get("name", "anexo")
+        ask = (prompt or "").strip() or (
+            "Resume e explica o conteúdo deste anexo de forma clara, em português."
+        )
+
+        try:
+            if extracted["kind"] == "image":
+                messages = [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": ask},
+                            {"type": "image_url",
+                             "image_url": {"url": extracted["data_uri"]}},
+                        ],
+                    }
+                ]
+            else:  # text (inclui PDF já extraído)
+                content = (
+                    f"{ask}\n\n--- Conteúdo de '{name}' ---\n{extracted['text']}"
+                )
+                messages = [{"role": "user", "content": content}]
+
+            resp = self._client.chat.completions.create(
+                model=self.config.model, messages=messages
+            )
+            answer = (resp.choices[0].message.content or "").strip()
+            # Regista no histórico para dar contexto às perguntas seguintes.
+            self._history.append(
+                {"role": "user", "content": f"[anexo: {name}] {ask}"}
+            )
+            self._history.append({"role": "assistant", "content": answer})
+            return answer or "Não consegui tirar nada de útil do anexo."
+        except Exception as exc:  # noqa: BLE001
+            return f"[error] O modelo não conseguiu processar o anexo: {exc}"
+
     def respond(self, user_input: str) -> str:
         """Return JARVIS's reply to one line of user input."""
         # If a dangerous action is armed, this turn is its yes/no answer — it

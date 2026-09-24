@@ -217,6 +217,38 @@
     els.cmd.value = "";
   });
 
+  // ---- Anexos (imagem / PDF / texto) ----
+  (function setupAttach() {
+    const btn = document.getElementById("attachbtn");
+    const input = document.getElementById("fileinput");
+    if (!btn || !input) return;
+    btn.addEventListener("click", () => input.click());
+    input.addEventListener("change", async () => {
+      const f = input.files && input.files[0];
+      if (!f) return;
+      const prompt = els.cmd.value.trim(); // texto na barra vira a pergunta
+      els.cmd.value = "";
+      logLine("you", `📎 ${f.name}${prompt ? " — " + prompt : ""}`);
+      logLine("sys", "A ler o anexo...");
+      const fd = new FormData();
+      fd.append("file", f);
+      fd.append("prompt", prompt);
+      try {
+        const r = await fetch("/api/anexo", { method: "POST", body: fd });
+        const data = await r.json();
+        if (data.reply) {
+          logLine("jarvis", data.reply);
+          speak(data.reply);
+        } else {
+          logLine("sys", data.error || "Não consegui ler o anexo.");
+        }
+      } catch (err) {
+        logLine("sys", "Erro a enviar o anexo.");
+      }
+      input.value = ""; // permite reenviar o mesmo ficheiro
+    });
+  })();
+
   // ---- Click-to-talk (browser Web Speech API speech recognition) ----
   // Transcribes a spoken phrase into the command bar and submits it. Uses the
   // browser's SpeechRecognition (Chrome/Edge/Safari). Hidden if unsupported.

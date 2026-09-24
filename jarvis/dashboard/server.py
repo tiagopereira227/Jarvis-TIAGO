@@ -38,7 +38,15 @@ _TILE_TICK = 600.0
 def create_app() -> Any:
     """Build the FastAPI app. Imports FastAPI lazily with a helpful error."""
     try:
-        from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+        from fastapi import (
+            FastAPI,
+            File,
+            Form,
+            Request,
+            UploadFile,
+            WebSocket,
+            WebSocketDisconnect,
+        )
         from fastapi.responses import HTMLResponse, JSONResponse
         from fastapi.staticfiles import StaticFiles
     except ImportError as exc:  # pragma: no cover - exercised only without deps
@@ -73,6 +81,136 @@ def create_app() -> Any:
     async def index() -> str:
         return index_html
 
+    # -- Anexos (imagem / PDF / texto) -------------------------------------
+
+    _MAX_UPLOAD = 20 * 1024 * 1024  # 20 MB de guarda no upload
+
+    @app.post("/api/anexo")
+    async def api_attachment(file: UploadFile = File(...), prompt: str = Form("")) -> Any:
+        data = await file.read()
+        if len(data) > _MAX_UPLOAD:
+            return JSONResponse(
+                {"error": "Ficheiro demasiado grande (máx 20 MB)."}, status_code=400
+            )
+        from ..attachments import extract_bytes
+
+        extracted = extract_bytes(file.filename or "anexo", data)
+        # Corre o brain (bloqueante) fora do event loop.
+        reply = await asyncio.to_thread(
+            brain.respond_to_attachment, extracted, prompt
+        )
+        # Regista no histórico da conversa para reaparecer ao recarregar.
+        try:
+            history.add("user", f"[anexo: {file.filename}] {prompt}".strip())
+            history.add("jarvis", reply)
+        except Exception:  # noqa: BLE001
+            pass
+        return JSONResponse({"name": file.filename, "reply": reply})
+
+    # -- Horário: grelha semanal + importar de anexo -----------------------
+
+    @app.get("/api/horario")
+    async def api_horario() -> Any:
+        # Todas as aulas de todas as disciplinas, para a grelha semanal.
+        return JSONResponse({"classes": registry.courses.all_classes()})
+
+    @app.post("/api/horario/extrair")
+    async def api_horario_extrair(file: UploadFile = File(...)) -> Any:
+        # Lê o anexo do horário e devolve uma PROPOSTA de aulas (não grava).
+        data = await file.read()
+        if len(data) > _MAX_UPLOAD:
+            return JSONResponse({"error": "Ficheiro demasiado grande (máx 20 MB)."},
+                                status_code=400)
+        from ..attachments import extract_bytes
+
+        extracted = extract_bytes(file.filename or "horario", data)
+        result = await asyncio.to_thread(brain.extract_schedule, extracted)
+        if "error" in result:
+            return JSONResponse({"error": result["error"]}, status_code=400)
+        return JSONResponse(result)  # {"classes": [...]}
+
+    @app.post("/api/horario/aplicar")
+    async def api_horario_aplicar(req: Request) -> Any:
+        # Grava a proposta confirmada: para cada aula, encontra (ou cria) a
+        # disciplina e adiciona a aula ao horário.
+        body = await req.json()
+        classes = body.get("classes") or []
+        courses = registry.courses
+        gravadas = 0
+        for c in classes:
+            disc_name = (c.get("discipline") or "").strip()
+            weekday = (c.get("weekday") or "").strip()
+            if not disc_name or not weekday:
+                continue
+            disc = courses.resolve(disc_name) or courses.add_discipline(disc_name)
+            if disc is None:
+                continue
+            if courses.add_class(
+                disc["id"], weekday, c.get("start", ""), c.get("end", ""), c.get("room", "")
+            ):
+                gravadas += 1
+        return JSONResponse({"ok": True, "gravadas": gravadas})
+
+    # -- Materiais de aula (PPT/PDF) por disciplina ------------------------
+
+    @app.post("/api/cursos/{disc_id}/material")
+    async def api_add_material(disc_id: str, file: UploadFile = File(...),
+                               title: str = Form("")) -> Any:
+        # Anexa um PPT/PDF: extrai o texto e guarda como material na disciplina.
+        if registry.courses.get_discipline(disc_id) is None:
+            return JSONResponse({"error": "Disciplina não encontrada."}, status_code=404)
+        data = await file.read()
+        if len(data) > _MAX_UPLOAD:
+            return JSONResponse({"error": "Ficheiro demasiado grande (máx 20 MB)."},
+                                status_code=400)
+        from ..attachments import extract_bytes
+
+        extracted = extract_bytes(file.filename or "aula", data)
+        if extracted.get("kind") != "text":
+            return JSONResponse(
+                {"error": extracted.get("error", "Não consegui extrair texto do ficheiro.")},
+                status_code=400,
+            )
+        titulo = (title or "").strip() or (file.filename or "Aula")
+        mat = registry.courses.add_material(disc_id, titulo, extracted["text"])
+        if mat is None:
+            return JSONResponse({"error": "Não consegui guardar o material."},
+                                status_code=400)
+        # Não devolve o texto completo (pode ser grande) — só os metadados.
+        return JSONResponse({"id": mat["id"], "title": mat["title"],
+                             "date": mat["date"], "summary": mat["summary"],
+                             "chars": len(mat["text"])})
+
+    @app.post("/api/cursos/{disc_id}/material/{mat_id}/resumir")
+    async def api_resumir_material(disc_id: str, mat_id: str) -> Any:
+        mat = registry.courses.get_material(disc_id, mat_id)
+        if mat is None:
+            return JSONResponse({"error": "Material não encontrado."}, status_code=404)
+        # Se já tem resumo, devolve-o (poupa uma chamada ao modelo).
+        if mat.get("summary"):
+            return JSONResponse({"summary": mat["summary"], "cached": True})
+        resumo = await asyncio.to_thread(
+            brain.summarize_text, mat["text"], mat["title"]
+        )
+        if resumo.startswith("[error]"):
+            return JSONResponse({"error": resumo}, status_code=400)
+        registry.courses.set_material_summary(disc_id, mat_id, resumo)
+        return JSONResponse({"summary": resumo, "cached": False})
+
+    @app.post("/api/cursos/{disc_id}/material/{mat_id}/resumir-forcar")
+    async def api_resumir_forcar(disc_id: str, mat_id: str) -> Any:
+        # Regenera o resumo mesmo que já exista.
+        mat = registry.courses.get_material(disc_id, mat_id)
+        if mat is None:
+            return JSONResponse({"error": "Material não encontrado."}, status_code=404)
+        resumo = await asyncio.to_thread(
+            brain.summarize_text, mat["text"], mat["title"]
+        )
+        if resumo.startswith("[error]"):
+            return JSONResponse({"error": resumo}, status_code=400)
+        registry.courses.set_material_summary(disc_id, mat_id, resumo)
+        return JSONResponse({"summary": resumo, "cached": False})
+
     # -- Gestor de disciplinas (/cursos) -----------------------------------
 
     courses = registry.courses  # shared store (set up by Brain)
@@ -83,9 +221,17 @@ def create_app() -> Any:
 
     @app.get("/api/cursos")
     async def api_list() -> Any:
-        # Full state: every discipline with its notes/tests/tasks/absences, so
-        # the page can render one tab per discipline.
-        return JSONResponse({"disciplines": courses.list_disciplines()})
+        # Estado completo, mas com os materiais "aligeirados": enviamos só os
+        # metadados + resumo (não o texto completo dos slides, que pode ser
+        # enorme). O texto fica no servidor para gerar o resumo.
+        import copy
+
+        discs = copy.deepcopy(courses.list_disciplines())
+        for d in discs:
+            for m in d.get("materials", []):
+                m["chars"] = len(m.get("text", ""))
+                m.pop("text", None)
+        return JSONResponse({"disciplines": discs})
 
     @app.post("/api/cursos")
     async def api_add_discipline(req: Request) -> Any:
@@ -181,7 +327,19 @@ def create_app() -> Any:
         return JSONResponse({"ok": ok}, status_code=200 if ok else 404)
 
     if _STATIC.exists():
-        app.mount("/static", StaticFiles(directory=str(_STATIC)), name="static")
+        # StaticFiles com no-cache: assim o browser apanha sempre a versão mais
+        # recente do hud.js/cursos.js/css depois de atualizarmos algo, sem ser
+        # preciso um "hard refresh" (Cmd+Shift+R).
+        class _NoCacheStatic(StaticFiles):
+            def is_not_modified(self, *args: Any, **kwargs: Any) -> bool:
+                return False  # nunca responde 304; serve sempre o ficheiro
+
+            async def get_response(self, path: str, scope: Any) -> Any:
+                resp = await super().get_response(path, scope)
+                resp.headers["Cache-Control"] = "no-store, max-age=0"
+                return resp
+
+        app.mount("/static", _NoCacheStatic(directory=str(_STATIC)), name="static")
 
     @app.websocket("/ws")
     async def ws(sock: WebSocket) -> None:
